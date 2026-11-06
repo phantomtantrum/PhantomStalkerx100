@@ -80,7 +80,7 @@ COMMANDS: tuple[Command, ...] = (
     Command("remind", "", "нагадування"),
     Command("name", "<ім'я>", "перейменувати фантома"),
     Command("tone", "<опис>", "твій стиль письма"),
-    Command("color", "[колір]", "колір фантома"),
+    Command("color", "[колір]", "колір акценту інтерфейсу"),
     Command("model", "[id]", "модель Claude"),
     Command("key", "", "задати ключ API (зберігається в keyring)"),
     Command("clear", "", "очистити розмову"),

@@ -151,9 +151,9 @@ def test_mention_context(env):
 def test_color_command(env):
     _, settings, proc, _ = env
     listing = proc.run("/color")
-    assert any("silver" in line for line in listing.details)
-    assert proc.run("/color mint").kind == "ok"
-    assert settings.get("color") == "mint"
-    assert proc.run("/color лавандовий").kind == "ok"
-    assert settings.get("color") == "lavender"
+    assert any("mono" in line for line in listing.details)
+    assert proc.run("/color cyan").kind == "ok"
+    assert settings.get("color") == "cyan"
+    assert proc.run("/color пурпуровий").kind == "ok"
+    assert settings.get("color") == "magenta"
     assert proc.run("/color orange").kind == "error"

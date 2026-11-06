@@ -43,7 +43,7 @@ async def test_welcome_and_key_hint(conn, keyring_backend):
     app = make_app(conn, keyring_backend, key=False)
     async with app.run_test(size=SIZE):
         text = log_text(app)
-        assert "PhantomStalker" in text and "/key" in text
+        assert "█" in text and "/help" in text and "/key" in text  # напис QUANTPHANTOM і підказки
         assert app.focused is app.prompt
 
 

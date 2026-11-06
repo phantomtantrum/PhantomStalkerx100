@@ -1,9 +1,12 @@
-"""Мінімалістичні віджети консолі: шапка з фантомом, стрічка, рядок статусу, поле вводу, підказки."""
+"""Мінімалістичні віджети консолі: шапка з написом, стрічка, рядок статусу, поле вводу, підказки.
+
+Усі кольори — імена ANSI з палітри терміналу користувача (див. core/theme.py).
+"""
 
 from __future__ import annotations
 
 from rich.box import ROUNDED
-from rich.console import RenderableType
+from rich.console import Group, RenderableType
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
@@ -15,29 +18,27 @@ from textual.widgets import Input, Static
 from phantomstalker import __version__
 from phantomstalker.core.commands import Command, Say
 from phantomstalker.core.persona import PersonaEngine
-from phantomstalker.core.sprite import big_grid, mini_grid, render
 from phantomstalker.core.theme import ERROR, MUTED, TEXT, current
+from phantomstalker.core import wordmark
 
-BORDER = "#45474F"
+BORDER = MUTED
+SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
-def welcome(persona: PersonaEngine, location: str) -> RenderableType:
+def welcome(location: str, available_width: int = 120) -> RenderableType:
     theme = current()
-    ghost = render(big_grid(persona.mood, persona.frame_index, theme))
+    fits = available_width >= wordmark.width() + 8
+    logo = wordmark.render(style=TEXT) if fits else wordmark.render_compact(style=TEXT)
     info = Text()
-    info.append("PhantomStalker", style=f"bold {TEXT}")
-    info.append(f" v{__version__}\n", style=MUTED)
-    info.append("Твій фантом. Твої люди. Твій слід.\n\n", style="#B9BCC8")
-    info.append("/help", style=theme.accent)
-    info.append(" — команди   ", style=MUTED)
-    info.append("@ім'я", style=theme.accent)
+    info.append(f"v{__version__}", style=MUTED)
+    info.append("  ·  ", style=MUTED)
+    info.append("/help", style=f"bold {theme.accent}")
+    info.append(" — команди  ·  ", style=MUTED)
+    info.append("@ім'я", style=f"bold {theme.accent}")
     info.append(" — нотатки про людину\n", style=MUTED)
-    info.append(location, style="#62626C")
-    grid = Table.grid(padding=(0, 3))
-    grid.add_column(vertical="middle")
-    grid.add_column(vertical="middle")
-    grid.add_row(ghost, info)
-    return Panel(grid, box=ROUNDED, border_style=BORDER, expand=False, padding=(0, 2))
+    info.append(location, style=MUTED)
+    return Panel(Group(logo, Text(""), info), box=ROUNDED, border_style=BORDER, expand=False,
+                 padding=(1, 3))
 
 
 def user_line(text: str) -> RenderableType:
@@ -48,12 +49,14 @@ def bullet(body: RenderableType, color: str | None = None) -> RenderableType:
     grid = Table.grid(padding=(0, 1))
     grid.add_column(width=1, no_wrap=True)
     grid.add_column(ratio=1)
-    grid.add_row(Text("●", style=color or current().body), body)
+    grid.add_row(Text("●", style=color or TEXT), body)
     return grid
 
 
 def phantom_message(text: str) -> RenderableType:
-    return bullet(Markdown(text) if text else Text(""))
+    # ansi_dark: підсвітка коду теж з палітри терміналу, без власного фону
+    md = Markdown(text, code_theme="ansi_dark", inline_code_theme="ansi_dark") if text else Text("")
+    return bullet(md)
 
 
 def say(result: Say) -> RenderableType:
@@ -85,34 +88,23 @@ class Entry(Static):
 
 
 class WelcomeEntry(Entry):
-    """Шапка з великим анімованим фантомом."""
+    """Шапка з написом QUANTPHANTOM; перебудовується під ширину вікна."""
 
-    def __init__(self, persona: PersonaEngine, location: str, **kwargs) -> None:
-        self.persona = persona
+    def __init__(self, location: str, **kwargs) -> None:
         self.location = location
-        super().__init__(welcome(persona, location), **kwargs)
+        super().__init__(welcome(location), **kwargs)
 
     @property
     def body(self) -> RenderableType:
-        return welcome(self.persona, self.location)
+        width = self.app.size.width if self.is_attached else 120
+        return welcome(self.location, width)
 
     def render(self) -> RenderableType:
         return self.body
 
 
-class MiniGhost(Static):
-    DEFAULT_CSS = "MiniGhost { width: 9; height: 3; }"
-
-    def __init__(self, persona: PersonaEngine, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.persona = persona
-
-    def render(self) -> RenderableType:
-        return render(mini_grid(self.persona.mood, self.persona.frame_index, current()))
-
-
 class StatusLine(Static):
-    DEFAULT_CSS = "StatusLine { height: 3; width: 1fr; padding: 0 2; content-align: left middle; }"
+    DEFAULT_CSS = "StatusLine { height: 1; padding: 0 1; }"
 
     def __init__(self, persona: PersonaEngine, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -121,15 +113,13 @@ class StatusLine(Static):
 
     def render(self) -> RenderableType:
         p, theme = self.persona, current()
-        out = Text(p.name, style=f"bold {theme.body}")
         line = p.line.splitlines()[0] if p.line else ""
         if self.busy:
-            dots = "." * (p.frame_index % 3 + 1)
-            out.append(f"  {line.rstrip('…. ')}{dots}", style=theme.accent)
+            out = Text(SPINNER[p.frame_index % len(SPINNER)], style=f"bold {theme.accent}")
+            out.append(f" {line.rstrip('…. ')}…", style=TEXT)
             out.append("  esc — перервати", style=MUTED)
-        elif line:
-            out.append(f"  {line}", style=f"italic {MUTED}")
-        return out
+            return out
+        return Text(line, style=f"italic {MUTED}")
 
 
 class Suggestions(Static):

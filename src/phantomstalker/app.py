@@ -67,11 +67,11 @@ class PhantomStalkerApp(App):
         height: auto;
         margin: 0 1;
         padding: 0 1;
-        border: round $foreground 35%;
+        border: round ansi_bright_black;
     }
-    #caret { width: 2; color: $foreground 60%; }
-    #status-row { height: 3; margin: 0 1; }
-    PromptInput { border: none; height: 1; padding: 0; background: ansi_default; width: 1fr; }
+    #caret { width: 2; color: ansi_bright_black; }
+    PromptInput { border: none; height: 1; padding: 0; width: 1fr;
+                  background: ansi_default; color: ansi_default; }
     PromptInput:focus { border: none; background: ansi_default; }
     """
 
@@ -113,9 +113,7 @@ class PhantomStalkerApp(App):
     # --- побудова ----------------------------------------------------------
     def compose(self) -> ComposeResult:
         yield VerticalScroll(id="log")
-        with Horizontal(id="status-row"):
-            yield ui.MiniGhost(self.persona, id="mini")
-            yield ui.StatusLine(self.persona, id="status")
+        yield ui.StatusLine(self.persona, id="status")
         with Horizontal(id="prompt-box"):
             yield Label(">", id="caret")
             yield ui.PromptInput(id="prompt", placeholder=PLACEHOLDER)
@@ -162,15 +160,16 @@ class PhantomStalkerApp(App):
         return self.query_one("#suggest", ui.Suggestions)
 
     def _add_welcome(self) -> None:
-        self._welcome = ui.WelcomeEntry(self.persona, self._db_label)
+        self._welcome = ui.WelcomeEntry(self._db_label)
         self.query_one("#log", VerticalScroll).mount(self._welcome)
+
+    def on_resize(self) -> None:
+        if self._welcome is not None and self._welcome.is_mounted:
+            self._welcome.refresh(layout=True)
 
     def _refresh_persona(self) -> None:
         """Перемалювати все, де видно фантома."""
-        for widget_id in ("#status", "#mini"):
-            self.query_one(widget_id).refresh()
-        if self._welcome is not None and self._welcome.is_mounted:
-            self._welcome.refresh()
+        self.status.refresh()
 
     def add(self, renderable: RenderableType) -> ui.Entry:
         entry = ui.Entry(renderable)
@@ -283,7 +282,7 @@ class PhantomStalkerApp(App):
         text = pending.prompt if isinstance(pending, AskSecret) else pending.question
         if isinstance(pending, AskSecret):
             self.prompt.password = True
-            self.query_one("#prompt-box").styles.border = ("round", current().accent)
+            self.query_one("#prompt-box").styles.border = ("round", current().textual_accent)
         self.prompt.placeholder = text
         self.add(ui.say(Say(text)))
 

@@ -1,44 +1,46 @@
-"""Колірні теми персонажа й інтерфейсу."""
+"""Кольори інтерфейсу — лише з палітри терміналу користувача.
+
+Жодних hex-кольорів: усе задається іменами ANSI («default», «bright_black», «cyan»…),
+тож світла чи темна тема терміналу, Solarized, Dracula тощо підхоплюються автоматично.
+Другорядний текст — стиль «dim» (а не сірий колір: у деяких темах «bright_black» темніший за текст).
+За замовчуванням інтерфейс монохромний; акцент можна змінити командою /color.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-
-def _dim(hex_color: str, factor: float = 0.6) -> str:
-    r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
-    return "#{:02X}{:02X}{:02X}".format(*(round(c * factor) for c in (r, g, b)))
+TEXT = "default"          # основний колір тексту терміналу
+MUTED = "dim"             # другорядний текст: приглушений колір тексту, коректний у будь-якій темі
+ERROR = "red"
+GAIN = "green"
+LOSS = "red"
 
 
 @dataclass(frozen=True)
 class Theme:
     name: str
     label: str
-    body: str    # тіло фантома
-    accent: str  # думки, «!», виділення в інтерфейсі
+    accent: str  # ім'я ANSI-кольору (Rich)
 
     @property
-    def dim(self) -> str:
-        """Приглушене тіло для сну."""
-        return _dim(self.body)
+    def textual_accent(self) -> str:
+        """Те саме ім'я у форматі Textual CSS."""
+        return f"ansi_{self.accent}"
 
-
-ERROR = "#F87171"
-TEXT = "#E4E4E7"
-MUTED = "#8E8E99"
 
 THEMES: dict[str, Theme] = {
     t.name: t
     for t in (
-        Theme("silver", "сріблястий", "#DADEEA", "#8FC7FF"),
-        Theme("lavender", "лавандовий", "#C4B8FA", "#E2D9FF"),
-        Theme("mint", "м'ятний", "#9FE8D0", "#D6FFF2"),
-        Theme("ice", "крижаний", "#A9D4FF", "#E3F1FF"),
-        Theme("pink", "рожевий", "#F5B5CF", "#FFE0EC"),
-        Theme("white", "білий", "#F4F5F8", "#8FC7FF"),
+        Theme("mono", "монохром (колір тексту терміналу)", "default"),
+        Theme("cyan", "бірюзовий", "cyan"),
+        Theme("blue", "синій", "blue"),
+        Theme("magenta", "пурпуровий", "magenta"),
+        Theme("green", "зелений", "green"),
+        Theme("yellow", "жовтий", "yellow"),
     )
 }
-DEFAULT_THEME = "silver"
+DEFAULT_THEME = "mono"
 
 
 def get_theme(name: str | None) -> Theme:
