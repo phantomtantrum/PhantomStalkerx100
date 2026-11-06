@@ -234,3 +234,26 @@ async def test_encrypt_result_is_copied(conn, keyring_backend):
         await pilot.pause()
         assert copied and copied[0].startswith("-----BEGIN AGE ENCRYPTED FILE-----")
         assert "correct horse" not in log_text(app)
+
+
+async def test_shell_style_prompt(conn, keyring_backend, tmp_path, monkeypatch):
+    from phantomstalker.ui.console import PromptLabel, short_path
+
+    assert short_path("/home/me", "/home/me") == "~"
+    assert short_path("/home/me/projects/app", "/home/me") == "~/projects/app"
+    assert short_path("/var/" + "x" * 50 + "/deep/dir", "/home/me").startswith("…/")
+    monkeypatch.chdir(tmp_path)
+    app = make_app(conn, keyring_backend)
+    async with app.run_test(size=SIZE) as pilot:
+        label = app.query_one(PromptLabel)
+        assert str(label.render()).startswith("phantom-[") and str(label.render()).endswith("] $ ")
+        assert tmp_path.name in str(label.render())
+        (tmp_path / "sub").mkdir()
+        await submit(app, pilot, "/cd sub")
+        assert "sub]" in str(label.render())
+        await submit(app, pilot, "/key")
+        assert str(label.render()) == "phantom-[пароль] $ "
+        await pilot.press("escape")
+        assert "sub]" in str(label.render())
+        await submit(app, pilot, "/cd /definitely/missing")
+        assert "Не можу перейти" in log_text(app)

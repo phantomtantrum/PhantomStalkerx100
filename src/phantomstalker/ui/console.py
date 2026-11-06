@@ -209,6 +209,44 @@ class Suggestions(Static):
         return out
 
 
+def short_path(path: str, home: str, limit: int = 32) -> str:
+    """/home/me/projects/app → ~/projects/app; задовгі шляхи — …/останні/частини."""
+    if path == home or path.startswith(home.rstrip("/\\") + ("/" if "/" in home else "\\")):
+        path = "~" + path[len(home):]
+    if len(path) <= limit:
+        return path or "/"
+    parts = path.replace("\\", "/").split("/")
+    tail = "/".join(parts[-2:])
+    return "…/" + (tail if len(tail) <= limit - 2 else parts[-1][-(limit - 2):])
+
+
+class PromptLabel(Static):
+    """Шельний префікс рядка вводу: phantom-[~/тека] $ (або [пароль] / [y/n] у режимах вводу)."""
+
+    DEFAULT_CSS = "PromptLabel { width: auto; height: 1; }"
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.mode: str = ""  # "" | "secret" | "confirm"
+
+    def set_mode(self, mode: str) -> None:
+        self.mode = mode
+        self.refresh(layout=True)
+
+    def render(self) -> RenderableType:
+        import os
+        from pathlib import Path
+
+        accent = current().accent
+        where = {"secret": "пароль", "confirm": "y/n"}.get(self.mode) or short_path(os.getcwd(), str(Path.home()))
+        out = Text("phantom", style=f"bold {accent}")
+        out.append("-[", style=MUTED)
+        out.append(where, style=f"bold {accent}" if self.mode else TEXT)
+        out.append("]", style=MUTED)
+        out.append(" $ ", style=MUTED)
+        return out
+
+
 class PromptInput(Input):
     """Поле «> …» з доповненням команд (Tab) та історією (↑/↓)."""
 

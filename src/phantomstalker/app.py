@@ -15,7 +15,6 @@ from textual import events, on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
-from textual.widgets import Label
 from textual.worker import Worker
 
 from phantomstalker.core.commands import (
@@ -48,7 +47,7 @@ from phantomstalker.storage.db import connect, default_db_path
 from phantomstalker.ui import console as ui
 
 TICK_SECONDS = 0.5
-PLACEHOLDER = "Напиши щось або / для команд"
+PLACEHOLDER = "напиши щось або / для команд"
 CopilotFactory = Callable[["PhantomStalkerApp"], CopilotService]
 
 
@@ -68,13 +67,7 @@ class PhantomStalkerApp(App):
     CSS = """
     Screen { background: ansi_default; }
     #log { height: 1fr; padding: 1 1 1 1; scrollbar-size-vertical: 1; }
-    #prompt-box {
-        height: auto;
-        margin: 0 1;
-        padding: 0 1;
-        border: round ansi_bright_black;
-    }
-    #caret { width: 2; color: ansi_bright_black; }
+    #prompt-row { height: 1; margin: 1 1 0 1; }
     PromptInput { border: none; height: 1; padding: 0; width: 1fr;
                   background: ansi_default; color: ansi_default; }
     PromptInput:focus { border: none; background: ansi_default; }
@@ -121,8 +114,8 @@ class PhantomStalkerApp(App):
     def compose(self) -> ComposeResult:
         yield VerticalScroll(id="log")
         yield ui.StatusLine(self.persona, id="status")
-        with Horizontal(id="prompt-box"):
-            yield Label(">", id="caret")
+        with Horizontal(id="prompt-row"):
+            yield ui.PromptLabel(id="prompt-label")
             yield ui.PromptInput(id="prompt", placeholder=PLACEHOLDER)
         yield ui.Suggestions(id="suggest")
 
@@ -256,6 +249,7 @@ class PhantomStalkerApp(App):
         self.add(ui.user_line(shown if len(shown) < 600 else shown[:600] + " …"))
         if text.startswith("/"):
             self._handle(self.commands.run(text))
+            self.query_one(ui.PromptLabel).refresh(layout=True)  # /cd міг змінити теку
         else:
             self._chat(text)
 
@@ -336,7 +330,7 @@ class PhantomStalkerApp(App):
         text = pending.prompt if isinstance(pending, AskSecret) else pending.question
         if isinstance(pending, AskSecret):
             self.prompt.password = True
-            self.query_one("#prompt-box").styles.border = ("round", current().textual_accent)
+        self.query_one(ui.PromptLabel).set_mode("secret" if isinstance(pending, AskSecret) else "confirm")
         self.prompt.placeholder = text
         self.add(ui.say(Say(text)))
 
@@ -344,7 +338,7 @@ class PhantomStalkerApp(App):
         self._pending = None
         self.prompt.password = False
         self.prompt.placeholder = PLACEHOLDER
-        self.query_one("#prompt-box").styles.clear_rule("border")
+        self.query_one(ui.PromptLabel).set_mode("")
 
     def _resolve_pending(self, value: str) -> None:
         pending = self._pending

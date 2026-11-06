@@ -107,6 +107,7 @@ COMMANDS: tuple[Command, ...] = (
     Command("model", "[id]", "модель Claude", _SET),
     Command("key", "[сервіс]", "ключ API: anthropic, hibp, etherscan, abusech", _SET),
     Command("keys", "", "які ключі API налаштовано", _SET),
+    Command("cd", "[тека]", "змінити поточну теку (для /secrets, /deps, /file)"),
     Command("clear", "", "очистити розмову"),
     Command("exit", "", "вийти"),
 )
@@ -414,6 +415,17 @@ class CommandProcessor(SecurityCommands):
             mark = "✓" if self.settings.has_secret(name) else "·"
             lines.append(f"{mark} {name:<10} {label}" + ("" if self.settings.has_secret(name) else f" — {where}"))
         return Say("Ключі API", [*lines, "", "/key <сервіс> — додати; значення ніде не показуються"])
+
+    def cmd_cd(self, args: str) -> Outcome:
+        import os
+        from pathlib import Path
+
+        target = Path(args.strip() or "~").expanduser()
+        try:
+            os.chdir(target)
+        except OSError as exc:
+            raise CommandError(f"Не можу перейти в {target}: {exc.strerror or exc}") from exc
+        return Say(f"Тека: {Path.cwd()}")
 
     def cmd_clear(self, _: str) -> Outcome:
         return Clear()
