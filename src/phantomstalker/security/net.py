@@ -12,7 +12,7 @@ import httpx
 
 from phantomstalker import __version__
 
-USER_AGENT = f"QuantPhantom/{__version__} (+https://github.com/phantomtantrum/PhantomStalkerx100)"
+USER_AGENT = f"PhantomStalker/{__version__} (+https://github.com/phantomtantrum/PhantomStalkerx100)"
 
 
 def client(**kwargs: Any) -> httpx.AsyncClient:

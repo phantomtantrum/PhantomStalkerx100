@@ -37,11 +37,11 @@ def test_default_theme_is_monochrome_and_unknown_falls_back():
     set_current("mono")
 
 
-def test_wordmark_renders_quantphantom():
-    rows = wordmark.pixels()
-    assert len(rows) == 6 and all(len(r) == wordmark.width() for r in rows)
-    text = wordmark.render()
-    assert len(text.plain.splitlines()) == 3
-    assert set(text.plain) <= set("▀▄█ \n")
-    assert wordmark.width() <= 76  # влазить у термінал 80 колонок разом з рамкою
-    assert wordmark.render_compact().plain.replace(" ", "") == "QUANTPHANTOM"
+def test_logo_is_bloody_phantom_stalker():
+    assert len(wordmark.PHANTOM) == len(wordmark.STALKER) == len(wordmark.ONE_LINE) == 9
+    assert wordmark.width(wordmark.PHANTOM) <= 80 and wordmark.width(wordmark.STALKER) <= 80  # як на TAAG, w=80
+    assert set("".join(wordmark.ONE_LINE)) <= set("█▓▒░▄▀▐▌ ")
+    one = wordmark.render(200).plain.splitlines()
+    two = wordmark.render(100).plain.splitlines()
+    assert len(one) == 9 and len(two) == 19  # PHANTOM, порожній рядок, STALKER
+    assert wordmark.render(40).plain == "P H A N T O M  ·  S T A L K E R"

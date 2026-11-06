@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "phantomstalker"
 version = "0.2.0"
-description = "QuantPhantom — особистий термінал кібербезпеки з ШІ-аналітиком і соціальним ко-пілотом."
+description = "PhantomStalker — особистий термінал кібербезпеки з ШІ-аналітиком і соціальним ко-пілотом."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Phantom" }]
@@ -36,8 +36,8 @@ dev = [
 Homepage = "https://github.com/phantomtantrum/PhantomStalkerx100"
 
 [project.scripts]
-quantphantom = "phantomstalker.__main__:main"
 phantomstalker = "phantomstalker.__main__:main"
+quantphantom = "phantomstalker.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/phantomstalker"]

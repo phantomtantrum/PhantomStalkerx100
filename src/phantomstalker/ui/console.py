@@ -5,10 +5,9 @@
 
 from __future__ import annotations
 
-from rich.box import ROUNDED
 from rich.console import Group, RenderableType
 from rich.markdown import Markdown
-from rich.panel import Panel
+from rich.padding import Padding
 from rich.table import Table
 from rich.text import Text
 from textual.binding import Binding
@@ -22,14 +21,12 @@ from phantomstalker.core.theme import ERROR, GAIN, MUTED, TEXT, current
 from phantomstalker.security.report import Report, Severity
 from phantomstalker.core import wordmark
 
-BORDER = MUTED
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
 def welcome(location: str, available_width: int = 120) -> RenderableType:
     theme = current()
-    fits = available_width >= wordmark.width() + 8
-    logo = wordmark.render(style=TEXT) if fits else wordmark.render_compact(style=TEXT)
+    logo = wordmark.render(available_width - 4, style=TEXT)  # мінус відступи
     info = Text()
     info.append(f"v{__version__}", style=MUTED)
     info.append("  ·  ", style=MUTED)
@@ -38,8 +35,7 @@ def welcome(location: str, available_width: int = 120) -> RenderableType:
     info.append("/help", style=f"bold {theme.accent}")
     info.append(" — усі команди\n", style=MUTED)
     info.append(location, style=MUTED)
-    return Panel(Group(logo, Text(""), info), box=ROUNDED, border_style=BORDER, expand=False,
-                 padding=(1, 3))
+    return Padding(Group(logo, Text(""), info), (1, 0, 0, 1))  # без рамки — як після figlet у терміналі
 
 
 def user_line(text: str) -> RenderableType:
@@ -138,7 +134,7 @@ class Entry(Static):
 
 
 class WelcomeEntry(Entry):
-    """Шапка з написом QUANTPHANTOM; перебудовується під ширину вікна."""
+    """Шапка з логотипом PHANTOM STALKER; перебудовується під ширину вікна."""
 
     def __init__(self, location: str, **kwargs) -> None:
         self.location = location
