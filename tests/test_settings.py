@@ -62,3 +62,14 @@ def test_load_dotenv(tmp_path, monkeypatch):
     load_dotenv(env)
     assert os.environ["PS_TEST_A"] == "hello"
     assert os.environ["PS_TEST_B"] == "kept"
+
+
+def test_load_dotenv_inline_comments(tmp_path, monkeypatch):
+    for name in ("PS_A", "PS_B", "PS_C"):
+        monkeypatch.delenv(name, raising=False)
+    env = tmp_path / ".env"
+    env.write_text('PS_A=        # лише коментар\nPS_B=abc  # ключ\nPS_C="has # hash"\n', encoding="utf-8")
+    load_dotenv(env)
+    assert "PS_A" not in os.environ
+    assert os.environ["PS_B"] == "abc"
+    assert os.environ["PS_C"] == "has # hash"

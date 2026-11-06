@@ -9,8 +9,9 @@ from typing import Literal
 
 from phantomstalker.services.copilot import Action, CopilotRequest
 from phantomstalker.services.crm import Contact, CRMRepository, humanize_days, parse_user_date
-from phantomstalker.services.settings import SettingsService
+from phantomstalker.core.security_commands import Copyable, Explain, RunTask, SecurityCommands, ShowReport
 from phantomstalker.core.theme import THEMES
+from phantomstalker.services.settings import SECRETS, SettingsService
 
 # --- результати команд ---------------------------------------------------------
 
@@ -52,7 +53,7 @@ class Exit:
     pass
 
 
-Outcome = Say | StreamAction | Confirm | AskSecret | Clear | Exit
+Outcome = Say | StreamAction | Confirm | AskSecret | Clear | Exit | RunTask | ShowReport | Explain | Copyable
 
 
 @dataclass(frozen=True)
@@ -60,29 +61,52 @@ class Command:
     name: str
     usage: str
     help: str
+    group: str = ""
 
 
+_SEC, _AI, _PPL, _SET = "Безпека", "Листування", "Люди", "Налаштування"
 COMMANDS: tuple[Command, ...] = (
     Command("help", "", "усі команди й клавіші"),
-    Command("polish", "[текст]", "відполірувати (без тексту — останню відповідь)"),
-    Command("warmer", "[текст]", "зробити тепліше"),
-    Command("formal", "[текст]", "зробити формальніше"),
-    Command("shorter", "[текст]", "зробити коротше"),
-    Command("translate", "<мова> [текст]", "перекласти"),
-    Command("reply", "<повідомлення>", "запропонувати відповідь на отримане"),
-    Command("people", "[пошук]", "список людей"),
-    Command("add", "<ім'я> [@нік] [#тег] [нотатки]", "додати людину"),
-    Command("show", "<ім'я>", "картка людини"),
-    Command("note", "<ім'я> <текст>", "дописати нотатку"),
-    Command("met", "<ім'я> [про що]", "відмітити, що ви спілкувались"),
-    Command("date", "<ім'я> <ДД.ММ> <подія>", "важлива дата (щорічно)"),
-    Command("rm", "<ім'я>", "видалити людину"),
-    Command("remind", "", "нагадування"),
-    Command("name", "<ім'я>", "перейменувати фантома"),
-    Command("tone", "<опис>", "твій стиль письма"),
-    Command("color", "[колір]", "колір акценту інтерфейсу"),
-    Command("model", "[id]", "модель Claude"),
-    Command("key", "", "задати ключ API (зберігається в keyring)"),
+    Command("audit", "", "аудит захищеності цього комп'ютера", _SEC),
+    Command("ssh", "[тека]", "аудит SSH-ключів і налаштувань", _SEC),
+    Command("logs", "[файл]", "підбір паролів і підозрілі входи в журналах", _SEC),
+    Command("secrets", "[тека]", "API-ключі й паролі в коді та історії git", _SEC),
+    Command("deps", "[тека]", "вразливості в залежностях (OSV.dev)", _SEC),
+    Command("cve", "<CVE-…>", "що це за вразливість і чи її атакують", _SEC),
+    Command("brief", "[днів]", "свіжі активно експлуатовані вразливості", _SEC),
+    Command("stack", "[софт, …]", "твій софт для /brief", _SEC),
+    Command("phish", "<текст|посилання|.eml>", "аналіз на фішинг", _SEC),
+    Command("file", "<шлях> [sha256]", "хеші, підробка розширення, база шкідливого ПЗ", _SEC),
+    Command("pwned", "", "чи злитий пароль + стійкість", _SEC),
+    Command("passgen", "[довжина]", "згенерувати пароль і парольну фразу", _SEC),
+    Command("breach", "<твоя пошта>", "чи світилася пошта у витоках (HIBP)", _SEC),
+    Command("incident", "[що сталося]", "план дій, якщо тебе зламали", _SEC),
+    Command("checkaddr", "<0x…> [очікувана]", "перевірка крипто-адреси перед переказом", _SEC),
+    Command("approvals", "<0x…> [мережа]", "небезпечні дозволи токенів гаманця", _SEC),
+    Command("encrypt", "<текст|файл>", "зашифрувати паролем (age)", _SEC),
+    Command("decrypt", "<блок|файл>", "розшифрувати", _SEC),
+    Command("exif", "<фото> [--show]", "прибрати GPS і метадані з фото", _SEC),
+    Command("explain", "[питання]", "пояснення останнього звіту від ШІ", _SEC),
+    Command("polish", "[текст]", "відполірувати (без тексту — останню відповідь)", _AI),
+    Command("warmer", "[текст]", "зробити тепліше", _AI),
+    Command("formal", "[текст]", "зробити формальніше", _AI),
+    Command("shorter", "[текст]", "зробити коротше", _AI),
+    Command("translate", "<мова> [текст]", "перекласти", _AI),
+    Command("reply", "<повідомлення>", "запропонувати відповідь на отримане", _AI),
+    Command("people", "[пошук]", "список людей", _PPL),
+    Command("add", "<ім'я> [@нік] [#тег] [нотатки]", "додати людину", _PPL),
+    Command("show", "<ім'я>", "картка людини", _PPL),
+    Command("note", "<ім'я> <текст>", "дописати нотатку", _PPL),
+    Command("met", "<ім'я> [про що]", "відмітити, що ви спілкувались", _PPL),
+    Command("date", "<ім'я> <ДД.ММ> <подія>", "важлива дата (щорічно)", _PPL),
+    Command("rm", "<ім'я>", "видалити людину", _PPL),
+    Command("remind", "", "нагадування", _PPL),
+    Command("name", "<ім'я>", "перейменувати фантома", _SET),
+    Command("tone", "<опис>", "твій стиль письма", _SET),
+    Command("color", "[колір]", "колір акценту інтерфейсу", _SET),
+    Command("model", "[id]", "модель Claude", _SET),
+    Command("key", "[сервіс]", "ключ API: anthropic, hibp, etherscan, abusech", _SET),
+    Command("keys", "", "які ключі API налаштовано", _SET),
     Command("clear", "", "очистити розмову"),
     Command("exit", "", "вийти"),
 )
@@ -184,13 +208,15 @@ def contact_line(c: Contact) -> str:
 # --- виконання -----------------------------------------------------------------
 
 
-class CommandProcessor:
+class CommandProcessor(SecurityCommands):
     def __init__(self, crm: CRMRepository, settings: SettingsService,
-                 last_output: Callable[[], str], today: Callable[[], date] = date.today) -> None:
+                 last_output: Callable[[], str], today: Callable[[], date] = date.today,
+                 last_report: Callable[[], str] = lambda: "") -> None:
         self.crm = crm
         self.settings = settings
         self._last_output = last_output
         self._today = today
+        self.last_report = last_report
 
     def run(self, line: str) -> Outcome:
         name, _, args = line.strip().lstrip("/").partition(" ")
@@ -210,10 +236,16 @@ class CommandProcessor:
     # --- довідка ---
     def cmd_help(self, _: str) -> Outcome:
         width = max(len(c.name) + len(c.usage) for c in COMMANDS) + 3
-        lines = [f"/{c.name} {c.usage}".ljust(width) + c.help for c in COMMANDS]
+        lines: list[str] = []
+        for group in (_SEC, _AI, _PPL, _SET, ""):
+            items = [c for c in COMMANDS if c.group == group]
+            if items:
+                lines.append(f"{group or 'Інше'}:")
+                lines += [f"  /{c.name} {c.usage}".ljust(width + 2) + c.help for c in items]
+                lines.append("")
         lines += [
-            "",
             "Просто пиши — і фантом відповість. @ім'я додасть у розмову твої нотатки про людину.",
+            "Багаторядковий текст можна вставляти — переноси збережуться.",
             "Tab — доповнити команду · ↑/↓ — історія · Esc — перервати · Ctrl+C — вихід",
         ]
         return Say("Команди", lines)
@@ -356,19 +388,32 @@ class CommandProcessor:
         return Say(f"Модель: {args}", kind="ok")
 
     def cmd_key(self, args: str) -> Outcome:
+        name = (args.split() or ["anthropic"])[0].casefold()
+        if name not in SECRETS and len(args.strip()) >= 20:  # вставили сам ключ: /key sk-ant-…
+            self.settings.set_secret("anthropic", args.strip())
+            return Say("Ключ Anthropic API збережено в keyring", kind="ok", react=("settings_saved", {}))
+        if name not in SECRETS:
+            raise CommandError("Сервіси: " + ", ".join(SECRETS))
+        label = SECRETS[name][2]
+
         def save(value: str) -> Outcome:
             if not value.strip():
                 return Say("Скасовано")
             try:
-                self.settings.set_api_key(value)
+                self.settings.set_secret(name, value)
             except Exception as exc:
                 return Say("Не вдалося зберегти в keyring", [type(exc).__name__,
-                           "можна задати ANTHROPIC_API_KEY у .env"], kind="error")
-            return Say("Ключ збережено в keyring", kind="ok", react=("settings_saved", {}))
+                           f"можна задати змінну {SECRETS[name][1]} у .env"], kind="error")
+            return Say(f"Ключ {label} збережено в keyring", kind="ok", react=("settings_saved", {}))
 
-        if args:  # не показуємо ключ у стрічці
-            return save(args)
-        return AskSecret("встав ключ Anthropic API і натисни Enter (Esc — скасувати)", save)
+        return AskSecret(f"встав ключ {label} і натисни Enter (Esc — скасувати)", save)
+
+    def cmd_keys(self, _: str) -> Outcome:
+        lines = []
+        for name, (_k, env, label, where) in SECRETS.items():
+            mark = "✓" if self.settings.has_secret(name) else "·"
+            lines.append(f"{mark} {name:<10} {label}" + ("" if self.settings.has_secret(name) else f" — {where}"))
+        return Say("Ключі API", [*lines, "", "/key <сервіс> — додати; значення ніде не показуються"])
 
     def cmd_clear(self, _: str) -> Outcome:
         return Clear()
@@ -377,6 +422,14 @@ class CommandProcessor:
         return Exit()
 
     cmd_quit = cmd_exit
+
+
+def redact(line: str) -> str:
+    """Для стрічки й історії: прибирає значення ключа з «/key <значення>»."""
+    parts = line.strip().split(maxsplit=1)
+    if len(parts) == 2 and parts[0].casefold() == "/key" and parts[1].split()[0].casefold() not in SECRETS:
+        return "/key ••••••••"
+    return line
 
 
 def mention_context(crm: CRMRepository, text: str, today: date | None = None) -> str:
@@ -411,6 +464,7 @@ __all__ = [
     "Say",
     "StreamAction",
     "match_commands",
+    "redact",
     "mention_context",
     "parse_add",
     "parse_day",

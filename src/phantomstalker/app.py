@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import sqlite3
 from collections.abc import Callable
 from datetime import datetime
@@ -27,7 +29,10 @@ from phantomstalker.core.commands import (
     StreamAction,
     match_commands,
     mention_context,
+    redact,
 )
+from phantomstalker.core.security_commands import Copyable, Explain, RunTask, ShowReport
+from phantomstalker.security.report import Report, SecurityError, Severity
 from phantomstalker.core.persona import Mood, PersonaEngine
 from phantomstalker.core.theme import current, set_current
 from phantomstalker.services.copilot import (
@@ -98,12 +103,14 @@ class PhantomStalkerApp(App):
         self.persona = PersonaEngine(self.settings.phantom_name)
         set_current(self.settings.get("color"))
         self._welcome: ui.WelcomeEntry | None = None
-        self.commands = CommandProcessor(self.crm, self.settings, lambda: self.last_output)
+        self.commands = CommandProcessor(self.crm, self.settings, lambda: self.last_output,
+                                         last_report=lambda: self.last_report)
         self._copilot_factory = copilot_factory
         self._animate = animate
 
         self.chat_history: list[dict[str, Any]] = []
         self.last_output = ""
+        self.last_report = ""
         self._history: list[str] = []
         self._history_pos = 0
         self._recalled: str | None = None  # значення з історії — для нього не показуємо підказки
@@ -233,18 +240,20 @@ class PhantomStalkerApp(App):
         self.prompt.value = ""
         self.suggest.show([])
 
+        value = value.replace(f" {ui.NEWLINE_MARK} ", "\n").replace(ui.NEWLINE_MARK, "\n")
         if self._pending is not None:
             self._resolve_pending(value)
             return
         text = value.strip()
         if not text:
             return
-        self._history.append(text)
+        shown = redact(text)
+        self._history.append(shown)
         self._history_pos = len(self._history)
         if self._stream_worker is not None and self._stream_worker.is_running:
-            self.add(ui.say(Say("Зачекай, я ще відповідаю (esc — перервати)", kind="error")))
+            self.add(ui.say(Say("Зачекай, я ще працюю (esc — перервати)", kind="error")))
             return
-        self.add(ui.user_line(text))
+        self.add(ui.user_line(shown if len(shown) < 600 else shown[:600] + " …"))
         if text.startswith("/"):
             self._handle(self.commands.run(text))
         else:
@@ -276,6 +285,51 @@ class PhantomStalkerApp(App):
             self._add_welcome()
         elif isinstance(outcome, Exit):
             self.exit()
+        elif isinstance(outcome, ShowReport):
+            self._show_report(outcome.report)
+        elif isinstance(outcome, RunTask):
+            self._stream_worker = self._run_task(outcome)
+        elif isinstance(outcome, Explain):
+            if self._require_key():
+                self._stream(f"{outcome.preface}\n\n{outcome.text}")
+        elif isinstance(outcome, Copyable):
+            self.add(ui.copyable(outcome.title, outcome.text, outcome.details))
+            if outcome.text:
+                self.copy_to_clipboard(outcome.text)
+            self.react("task_clean")
+
+    def _show_report(self, report: Report) -> None:
+        self.add(ui.report(report))
+        self.last_report = report.to_text()
+        if report.checklist:
+            return
+        self.react("task_issues" if report.worst >= Severity.MEDIUM else "task_clean")
+
+    @work(exclusive=True, group="ai")
+    async def _run_task(self, task: RunTask) -> None:
+        self.status.busy = True
+        self.persona.set_mood(Mood.THINKING, task.title)
+        self._refresh_persona()
+        try:
+            result = await asyncio.to_thread(task.job) if task.sync else task.job()
+            if inspect.isawaitable(result):
+                result = await result
+        except (SecurityError, OSError, ValueError) as exc:
+            self.status.busy = False
+            self.add(ui.say(Say(str(exc) or type(exc).__name__, kind="error")))
+            self.react("task_error", error=str(exc)[:60] or type(exc).__name__)
+            return
+        except Exception as exc:  # непередбачене не валить застосунок
+            self.status.busy = False
+            self.add(ui.say(Say(f"Помилка під час перевірки: {type(exc).__name__}", [str(exc)[:200]], kind="error")))
+            self.react("task_error", error=type(exc).__name__)
+            return
+        self.status.busy = False
+        if isinstance(result, Report):
+            self._show_report(result)
+        elif result is not None:
+            self._handle(result)
+        self._refresh_persona()
 
     def _enter_pending(self, pending: Confirm | AskSecret) -> None:
         self._pending = pending

@@ -18,7 +18,8 @@ from textual.widgets import Input, Static
 from phantomstalker import __version__
 from phantomstalker.core.commands import Command, Say
 from phantomstalker.core.persona import PersonaEngine
-from phantomstalker.core.theme import ERROR, MUTED, TEXT, current
+from phantomstalker.core.theme import ERROR, GAIN, MUTED, TEXT, current
+from phantomstalker.security.report import Report, Severity
 from phantomstalker.core import wordmark
 
 BORDER = MUTED
@@ -32,10 +33,10 @@ def welcome(location: str, available_width: int = 120) -> RenderableType:
     info = Text()
     info.append(f"v{__version__}", style=MUTED)
     info.append("  ·  ", style=MUTED)
+    info.append("/audit", style=f"bold {theme.accent}")
+    info.append(" — перевірити цей комп'ютер  ·  ", style=MUTED)
     info.append("/help", style=f"bold {theme.accent}")
-    info.append(" — команди  ·  ", style=MUTED)
-    info.append("@ім'я", style=f"bold {theme.accent}")
-    info.append(" — нотатки про людину\n", style=MUTED)
+    info.append(" — усі команди\n", style=MUTED)
     info.append(location, style=MUTED)
     return Panel(Group(logo, Text(""), info), box=ROUNDED, border_style=BORDER, expand=False,
                  padding=(1, 3))
@@ -67,6 +68,55 @@ def say(result: Say) -> RenderableType:
         body.append("⎿  " if i == 0 else "   ", style=MUTED)
         body.append(line, style="" if error else MUTED)
     return bullet(body, ERROR if error else None)
+
+
+ICONS: dict[Severity, tuple[str, str]] = {
+    Severity.CRITICAL: ("✗", f"bold {ERROR}"),
+    Severity.HIGH: ("✗", ERROR),
+    Severity.MEDIUM: ("!", "yellow"),
+    Severity.LOW: ("·", "yellow"),
+    Severity.INFO: ("i", MUTED),
+    Severity.OK: ("✓", GAIN),
+}
+NEWLINE_MARK = "⏎"
+
+
+def report(r: Report) -> RenderableType:
+    """Звіт інструменту безпеки: заголовок, оцінка, знахідки від найсерйозніших."""
+    head = Text(r.title, style="bold")
+    if r.score is not None and not r.checklist:
+        color = GAIN if r.score >= 80 else "yellow" if r.score >= 50 else ERROR
+        head.append(f"   {r.score}/100", style=f"bold {color}")
+    if r.summary:
+        head.append(f"\n{r.summary}", style=MUTED)
+    rows = Table.grid(padding=(0, 1))
+    rows.add_column(width=len(str(len(r.findings))) + 1 if r.checklist else 1, no_wrap=True)
+    rows.add_column(ratio=1)
+    findings = r.findings if r.checklist else r.sorted_findings()
+    for i, f in enumerate(findings, 1):
+        icon, style = (f"{i}.", MUTED) if r.checklist else ICONS[f.severity]
+        body = Text(f.title, style="bold" if f.severity >= Severity.HIGH and not r.checklist else "")
+        if f.detail:
+            body.append(f"\n{f.detail}", style=MUTED)
+        if f.fix:
+            body.append("\n→ ", style=current().accent)
+            body.append(f.fix)
+        rows.add_row(Text(icon, style=style), body)
+    parts: list[RenderableType] = [head, Text(""), rows]
+    for note in r.notes:
+        parts.append(Text(note, style=f"italic {MUTED}"))
+    if r.issues and not r.checklist:
+        parts.append(Text("/explain — пояснення й план виправлення від ШІ", style=MUTED))
+    return bullet(Group(*parts), ERROR if r.worst >= Severity.HIGH and not r.checklist else None)
+
+
+def copyable(title: str, text: str, details: list[str]) -> RenderableType:
+    body = Text(title, style="bold")
+    if text:
+        body.append("\n" + text.rstrip("\n"))
+    for line in details:
+        body.append("\n" + line, style=MUTED)
+    return bullet(body)
 
 
 class Entry(Static):
@@ -175,6 +225,19 @@ class PromptInput(Input):
         def __init__(self, step: int) -> None:
             super().__init__()
             self.step = step
+
+    def _on_paste(self, event) -> None:  # type: ignore[override]
+        """Стандартне поле лишає лише перший рядок; ми зберігаємо всі, позначаючи переноси ⏎."""
+        if event.text:
+            lines = event.text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+            while lines and not lines[-1].strip():
+                lines.pop()
+            joined = f" {NEWLINE_MARK} ".join(lines)
+            if self.selection.is_empty:
+                self.insert_text_at_cursor(joined)
+            else:
+                self.replace(joined, *self.selection)
+        event.stop()
 
     def action_complete(self) -> None:
         self.post_message(self.Complete())

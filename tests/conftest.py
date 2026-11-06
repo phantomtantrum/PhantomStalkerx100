@@ -34,5 +34,19 @@ def keyring_backend() -> MemoryKeyring:
 
 
 @pytest.fixture(autouse=True)
-def _no_env_key(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+def _isolated_env(monkeypatch, tmp_path):
+    for name in ("ANTHROPIC_API_KEY", "HIBP_API_KEY", "ETHERSCAN_API_KEY", "ABUSECH_AUTH_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("PHANTOMSTALKER_CACHE", str(tmp_path / "cache"))
+
+
+def mock_client(handler):
+    """httpx.AsyncClient, що відповідає функцією handler(request) -> httpx.Response."""
+    import httpx
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+def fake(prefix: str, n: int, alphabet: str = "Ab3Xk9Qz") -> str:
+    """Фіктивний токен, зібраний під час виконання (щоб у коді не було «справжніх» рядків)."""
+    return prefix + (alphabet * (n // len(alphabet) + 1))[:n]

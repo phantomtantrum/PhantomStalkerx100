@@ -8,7 +8,7 @@ from phantomstalker import __version__
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="phantomstalker", description="Твій фантом. Твої люди. Твій слід.")
+    parser = argparse.ArgumentParser(prog="quantphantom", description="QuantPhantom — особистий термінал кібербезпеки з ШІ.")
     parser.add_argument("--db", help="шлях до бази SQLite (за замовчуванням ~/.phantomstalker/phantom.db)")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = parser.parse_args(argv)

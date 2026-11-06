@@ -158,3 +158,79 @@ async def test_escape_interrupts_stream(conn, keyring_backend):
         assert "Перервано" in log_text(app)
         assert app.chat_history == []  # незавершена пара не потрапляє в історію
         assert not app.status.busy
+
+
+async def test_security_report_and_explain(conn, keyring_backend, monkeypatch):
+    from phantomstalker.security import audit as audit_mod
+    from phantomstalker.security.report import Report, Severity
+
+    def fake_audit():
+        r = Report("Аудит системи · Linux")
+        r.add(Severity.HIGH, "Фаєрвол вимкнено", fix="sudo ufw enable")
+        r.score = 80
+        return r
+
+    monkeypatch.setattr(audit_mod, "audit", fake_audit)
+    client = FakeClient(["Увімкни ", "фаєрвол."])
+    app = make_app(conn, keyring_backend, client)
+    async with app.run_test(size=SIZE) as pilot:
+        await submit(app, pilot, "/audit")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        text = log_text(app)
+        assert "Фаєрвол вимкнено" in text and "sudo ufw enable" in text and "80/100" in text
+        assert "Фаєрвол вимкнено" in app.last_report
+        assert app.persona.mood is Mood.ALERT
+        await submit(app, pilot, "/explain")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert "Фаєрвол вимкнено" in client.calls[0]["messages"][0]["content"]
+        assert "Увімкни фаєрвол." in log_text(app)
+
+
+async def test_task_error_is_shown(conn, keyring_backend):
+    app = make_app(conn, keyring_backend)
+    async with app.run_test(size=SIZE) as pilot:
+        await submit(app, pilot, "/secrets /definitely/not/here")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert "Немає такого шляху" in log_text(app)
+
+
+async def test_multiline_paste_keeps_newlines(conn, keyring_backend):
+    from textual import events
+
+    client = FakeClient(["ok"])
+    app = make_app(conn, keyring_backend, client)
+    async with app.run_test(size=SIZE) as pilot:
+        app.prompt.focus()
+        app.prompt._on_paste(events.Paste("рядок один\nрядок два\n"))
+        assert "⏎" in app.prompt.value
+        await pilot.press("enter")
+        await app.workers.wait_for_complete()
+        assert client.calls[0]["messages"][0]["content"] == "рядок один\nрядок два"
+
+
+async def test_secret_key_is_never_echoed(conn, keyring_backend):
+    app = make_app(conn, keyring_backend, key=False)
+    secret = "sk-ant-" + "q" * 30
+    async with app.run_test(size=SIZE) as pilot:
+        await submit(app, pilot, f"/key {secret}")
+        assert secret not in log_text(app)
+        assert app.settings.get_api_key() == secret
+        await pilot.press("up")
+        assert secret not in app.prompt.value
+
+
+async def test_encrypt_result_is_copied(conn, keyring_backend):
+    app = make_app(conn, keyring_backend)
+    copied = []
+    app.copy_to_clipboard = copied.append
+    async with app.run_test(size=SIZE) as pilot:
+        await submit(app, pilot, "/encrypt таємниця")
+        await submit(app, pilot, "correct horse")
+        await submit(app, pilot, "correct horse")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert copied and copied[0].startswith("-----BEGIN AGE ENCRYPTED FILE-----")
+        assert "correct horse" not in log_text(app)

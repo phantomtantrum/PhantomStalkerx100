@@ -252,6 +252,14 @@ class CRMRepository:
         self.conn.commit()
         return int(cur.lastrowid)  # type: ignore[arg-type]
 
+    def log_footprint(self, value_hash: str, source: str, result: str) -> None:
+        """Журнал перевірок власного сліду: лише хеш значення, не саме значення."""
+        self.conn.execute(
+            "INSERT INTO footprint_checks (value_hash, source, result, checked_at) VALUES (?, ?, ?, ?)",
+            (value_hash, source, result, _now().isoformat()),
+        )
+        self.conn.commit()
+
     def count_drafts(self) -> int:
         return int(self.conn.execute("SELECT COUNT(*) FROM drafts").fetchone()[0])
 
