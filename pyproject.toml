@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "Термінальний компаньйон з піксельним ШІ-фантомом — твій соціальний ко-пілот."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
 authors = [{ name = "Phantom" }]
 keywords = ["tui", "textual", "claude", "crm", "terminal"]
 classifiers = [
@@ -30,6 +29,9 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
 ]
+
+[project.urls]
+Homepage = "https://github.com/phantomtantrum/PhantomStalkerx100"
 
 [project.scripts]
 phantomstalker = "phantomstalker.__main__:main"

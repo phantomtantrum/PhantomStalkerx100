@@ -58,9 +58,17 @@ PhantomStalker — термінальний застосунок-компань�
 Потрібен Python 3.11+.
 
 ```bash
-cd PhantomStalker
-python -m venv .venv && source .venv/bin/activate
+git clone https://github.com/phantomtantrum/PhantomStalkerx100.git
+cd PhantomStalkerx100
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
+phantomstalker
+```
+
+Або однією командою, без клонування (зручно через [pipx](https://pipx.pypa.io)):
+
+```bash
+pipx install git+https://github.com/phantomtantrum/PhantomStalkerx100.git
 ```
 
 ## Ключ API
