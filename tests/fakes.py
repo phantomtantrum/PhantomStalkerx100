@@ -42,6 +42,24 @@ class FakeClient:
         self._stop_reason = stop_reason
         self._error = error
         self.beta = SimpleNamespace(messages=SimpleNamespace(stream=self._stream))
+        self.available_models = ["claude-opus-5-5"]
+        self.models = SimpleNamespace(retrieve=self._retrieve, list=self._list)
+
+    async def _retrieve(self, model_id: str) -> Any:
+        if model_id not in self.available_models:
+            import anthropic
+            import httpx2
+
+            resp = httpx2.Response(404, request=httpx2.Request("GET", "https://api.anthropic.com/v1/models/x"))
+            raise anthropic.NotFoundError(f"model: {model_id}", response=resp, body=None)
+        return SimpleNamespace(id=model_id)
+
+    def _list(self, **kwargs: Any):
+        async def gen():
+            for m in self.available_models:
+                yield SimpleNamespace(id=m)
+
+        return gen()
 
     def _stream(self, **kwargs: Any) -> FakeStream:
         self.calls.append(kwargs)

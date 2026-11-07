@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+import os
+
 import anthropic
 
 DEFAULT_MODEL = "claude-opus-5-5"
@@ -114,6 +116,41 @@ def build_chat_system_prompt(phantom_name: str, tone_profile: str, language: str
     )
 
 
+# Порядок, у якому пропонуємо модель, якщо поточна недоступна для ключа.
+PREFERRED_MODELS = ("claude-opus-5-5", "claude-sonnet-5-5", "claude-opus-5", "claude-sonnet-5",
+                    "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-5-5", "claude-haiku-4-5")
+
+
+def _api_detail(exc: anthropic.APIStatusError) -> str:
+    """Текст помилки від API (без службових обгорток)."""
+    body = exc.body if isinstance(exc.body, dict) else {}
+    err = body.get("error") if isinstance(body.get("error"), dict) else body
+    message = (err or {}).get("message") or getattr(exc, "message", "") or ""
+    return str(message).strip()[:200]
+
+
+def base_url_note() -> str:
+    url = os.environ.get("ANTHROPIC_BASE_URL", "").strip()
+    if url and "api.anthropic.com" not in url:
+        return (f" Увага: задано змінну ANTHROPIC_BASE_URL={url} — запити йдуть туди, а не на api.anthropic.com. "
+                "Прибери її, якщо це не навмисно.")
+    return ""
+
+
+def pick_model(available: list[str]) -> str | None:
+    for model in PREFERRED_MODELS:
+        if model in available:
+            return model
+    return available[0] if available else None
+
+
+@dataclass
+class AccessCheck:
+    ok: bool
+    message: str
+    suggestion: str | None = None  # модель, яку варто ввімкнути
+
+
 class CopilotService:
     def __init__(
         self,
@@ -137,6 +174,36 @@ class CopilotService:
         if self._client is None:
             self._client = self._client_factory(self.api_key)
         return self._client
+
+    async def check_access(self) -> AccessCheck:
+        """Перевіряє ключ і модель безкоштовним запитом до Models API; підбирає доступну модель."""
+        if not self.api_key:
+            return AccessCheck(False, "Ключ Anthropic не задано — додай його: /key")
+        client = self._get_client()
+        try:
+            await client.models.retrieve(self.model)
+            return AccessCheck(True, f"Ключ працює, модель {self.model} доступна")
+        except anthropic.AuthenticationError:
+            return AccessCheck(False, "Ключ не прийнято (401): він недійсний, відкликаний або скопійований не повністю. "
+                                      "Ключ API має починатися з sk-ant-api…" + base_url_note())
+        except anthropic.PermissionDeniedError as exc:
+            return AccessCheck(False, f"Доступ заборонено (403): {_api_detail(exc)}")
+        except anthropic.NotFoundError:
+            pass
+        except anthropic.APIStatusError as exc:
+            return AccessCheck(False, f"API повернуло помилку {exc.status_code}: {_api_detail(exc)}" + base_url_note())
+        except anthropic.APIConnectionError:
+            return AccessCheck(False, "Немає з'єднання з API — перевір мережу." + base_url_note())
+        # модель не знайдена — дивимось, які доступні
+        try:
+            available = [m.id async for m in client.models.list(limit=100)]
+        except anthropic.APIError:
+            available = []
+        best = pick_model(available)
+        msg = f"Ключ працює, але модель {self.model} недоступна для нього (404)."
+        if best:
+            msg += f" Доступна, наприклад: {best}."
+        return AccessCheck(False, msg + base_url_note(), best)
 
     async def stream(self, request: CopilotRequest) -> AsyncIterator[str]:
         """Дія над текстом (полірування, тон, переклад…): стрімить готове повідомлення."""
@@ -170,13 +237,20 @@ class CopilotService:
                     yield text
                 final = await stream.get_final_message()
         except anthropic.AuthenticationError as exc:
-            raise CopilotError("Ключ API не прийнято — задай інший через /key.") from exc
+            raise CopilotError("Ключ API не прийнято (401) — перевір його: /key test, або задай інший: /key."
+                               + base_url_note()) from exc
         except anthropic.PermissionDeniedError as exc:
-            raise CopilotError("Доступ заборонено для цього ключа або моделі.") from exc
+            raise CopilotError(f"Доступ заборонено (403): {_api_detail(exc) or 'ключ не має доступу до моделі'}. "
+                               "Перевір: /key test") from exc
+        except anthropic.NotFoundError as exc:
+            raise CopilotError(f"Не знайдено (404): {_api_detail(exc) or self.model}. Схоже, модель {self.model} "
+                               "недоступна для цього ключа — /key test підкаже доступну модель." + base_url_note()) from exc
         except anthropic.RateLimitError as exc:
             raise CopilotError("Забагато запитів — зачекай трохи й спробуй ще раз.") from exc
         except anthropic.APIStatusError as exc:
-            raise CopilotError(f"API повернуло помилку {exc.status_code}.") from exc
+            detail = _api_detail(exc)
+            raise CopilotError(f"API повернуло помилку {exc.status_code}" + (f": {detail}" if detail else ".")
+                               + base_url_note()) from exc
         except anthropic.APIConnectionError as exc:
             raise CopilotError("Немає з'єднання з API — перевір мережу.") from exc
 

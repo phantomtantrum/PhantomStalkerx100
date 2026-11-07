@@ -92,7 +92,13 @@ def test_keys_and_redaction(proc):
     assert isinstance(proc.run("/key hibp"), AskSecret)
     assert proc.run("/key nope").kind == "error"
     secret = "sk-ant-" + "x" * 30
-    assert proc.run(f"/key {secret}").kind == "ok"
+    from phantomstalker.core.commands import VerifyKey, clean_key
+
+    assert isinstance(proc.run(f"/key {secret}"), VerifyKey)
+    assert isinstance(proc.run("/key test"), VerifyKey) and proc.run("/key test").note is None
+    assert clean_key(f' "{secret}"\n') == secret
+    assert clean_key(f"ANTHROPIC_API_KEY={secret}") == secret
+    assert clean_key(f"sk-ant-\n{secret[7:]}") == secret
     assert proc.settings.get_api_key() == secret
     assert redact(f"/key {secret}") == "/key ••••••••"
     assert redact("/key hibp") == "/key hibp"

@@ -44,6 +44,13 @@ class AskSecret:
 
 
 @dataclass
+class VerifyKey:
+    """Перевірити ключ Anthropic і модель (робить застосунок — у нього є клієнт API)."""
+
+    note: Say | None = None
+
+
+@dataclass
 class Clear:
     pass
 
@@ -53,7 +60,8 @@ class Exit:
     pass
 
 
-Outcome = Say | StreamAction | Confirm | AskSecret | Clear | Exit | RunTask | ShowReport | Explain | Copyable
+Outcome = (Say | StreamAction | Confirm | AskSecret | Clear | Exit | RunTask | ShowReport | Explain | Copyable
+           | VerifyKey)
 
 
 @dataclass(frozen=True)
@@ -105,7 +113,7 @@ COMMANDS: tuple[Command, ...] = (
     Command("tone", "<опис>", "твій стиль письма", _SET),
     Command("color", "[колір]", "колір акценту інтерфейсу", _SET),
     Command("model", "[id]", "модель Claude", _SET),
-    Command("key", "[сервіс]", "ключ API: anthropic, hibp, etherscan, abusech", _SET),
+    Command("key", "[сервіс|test]", "ключ API: anthropic, hibp, etherscan, abusech; test — перевірити", _SET),
     Command("keys", "", "які ключі API налаштовано", _SET),
     Command("cd", "[тека]", "змінити поточну теку (для /secrets, /deps, /file)"),
     Command("clear", "", "очистити розмову"),
@@ -390,22 +398,26 @@ class CommandProcessor(SecurityCommands):
 
     def cmd_key(self, args: str) -> Outcome:
         name = (args.split() or ["anthropic"])[0].casefold()
+        if name in ("test", "check", "перевірити"):
+            return VerifyKey()
         if name not in SECRETS and len(args.strip()) >= 20:  # вставили сам ключ: /key sk-ant-…
-            self.settings.set_secret("anthropic", args.strip())
-            return Say("Ключ Anthropic API збережено в keyring", kind="ok", react=("settings_saved", {}))
+            self.settings.set_secret("anthropic", clean_key(args))
+            return VerifyKey(Say("Ключ Anthropic API збережено в keyring", kind="ok", react=("settings_saved", {})))
         if name not in SECRETS:
             raise CommandError("Сервіси: " + ", ".join(SECRETS))
         label = SECRETS[name][2]
 
         def save(value: str) -> Outcome:
-            if not value.strip():
+            value = clean_key(value)
+            if not value:
                 return Say("Скасовано")
             try:
                 self.settings.set_secret(name, value)
             except Exception as exc:
                 return Say("Не вдалося зберегти в keyring", [type(exc).__name__,
                            f"можна задати змінну {SECRETS[name][1]} у .env"], kind="error")
-            return Say(f"Ключ {label} збережено в keyring", kind="ok", react=("settings_saved", {}))
+            saved = Say(f"Ключ {label} збережено в keyring", kind="ok", react=("settings_saved", {}))
+            return VerifyKey(saved) if name == "anthropic" else saved
 
         return AskSecret(f"встав ключ {label} і натисни Enter (Esc — скасувати)", save)
 
@@ -434,6 +446,14 @@ class CommandProcessor(SecurityCommands):
         return Exit()
 
     cmd_quit = cmd_exit
+
+
+def clean_key(value: str) -> str:
+    """Прибирає те, що часто потрапляє при копіюванні: пробіли, переноси, лапки, «ANTHROPIC_API_KEY=»."""
+    value = "".join(value.split())
+    if "=" in value and value.split("=", 1)[0].replace("_", "").isupper():
+        value = value.split("=", 1)[1]
+    return value.strip("\"'`")
 
 
 def redact(line: str) -> str:

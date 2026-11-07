@@ -127,7 +127,10 @@ def test_settings_commands(env, keyring_backend):
     ask = proc.run("/key")
     assert isinstance(ask, AskSecret)
     saved = ask.on_submit("sk-ant-x")
-    assert saved.kind == "ok" and "sk-ant-x" not in saved.title + "".join(saved.details)
+    from phantomstalker.core.commands import VerifyKey
+
+    assert isinstance(saved, VerifyKey) and saved.note.kind == "ok"  # зберегли й одразу перевіримо
+    assert "sk-ant-x" not in saved.note.title + "".join(saved.note.details)
     assert settings.get_api_key() == "sk-ant-x"
 
 

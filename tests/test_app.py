@@ -282,3 +282,28 @@ async def test_logo_animation_skipped_by_keypress_or_flag(conn, keyring_backend)
     app = make_app(conn, keyring_backend)  # animate=False → логотип одразу статичний
     async with app.run_test(size=SIZE):
         assert app.query_one(WelcomeEntry).done
+
+
+async def test_saving_key_verifies_and_offers_available_model(conn, keyring_backend):
+    client = FakeClient()
+    client.available_models = ["claude-sonnet-5-5"]
+
+    def factory(app):
+        return CopilotService(api_key=app.settings.get_api_key(), model=app.settings.model,
+                              client_factory=lambda _k: client)
+
+    app = PhantomStalkerApp(db=conn, keyring_backend=keyring_backend, copilot_factory=factory, animate=False)
+    async with app.run_test(size=SIZE) as pilot:
+        await submit(app, pilot, "/key")
+        await submit(app, pilot, "  sk-ant-api03-" + "z" * 30 + "\n")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert app.settings.get_api_key() == "sk-ant-api03-" + "z" * 30  # пробіли/перенос прибрано
+        text = log_text(app)
+        assert "збережено" in text and "недоступна" in text and "claude-sonnet-5-5" in text
+        await submit(app, pilot, "y")
+        assert app.settings.model == "claude-sonnet-5-5"
+        await submit(app, pilot, "/key test")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert "Ключ працює, модель claude-sonnet-5-5 доступна" in log_text(app)

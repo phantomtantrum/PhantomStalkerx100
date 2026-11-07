@@ -26,6 +26,7 @@ from phantomstalker.core.commands import (
     Outcome,
     Say,
     StreamAction,
+    VerifyKey,
     match_commands,
     mention_context,
     redact,
@@ -290,11 +291,43 @@ class PhantomStalkerApp(App):
         elif isinstance(outcome, Explain):
             if self._require_key():
                 self._stream(f"{outcome.preface}\n\n{outcome.text}")
+        elif isinstance(outcome, VerifyKey):
+            if outcome.note is not None:
+                self._handle(outcome.note)
+            self._stream_worker = self._verify_key()
         elif isinstance(outcome, Copyable):
             self.add(ui.copyable(outcome.title, outcome.text, outcome.details))
             if outcome.text:
                 self.copy_to_clipboard(outcome.text)
             self.react("task_clean")
+
+    @work(exclusive=True, group="ai")
+    async def _verify_key(self) -> None:
+        self.status.busy = True
+        self.persona.set_mood(Mood.THINKING, "Перевіряю ключ")
+        self._refresh_persona()
+        try:
+            check = await self._copilot_factory(self).check_access()
+        except Exception as exc:  # pragma: no cover - непередбачене
+            check = None
+            self.add(ui.say(Say(f"Не вдалося перевірити ключ: {type(exc).__name__}", kind="error")))
+        self.status.busy = False
+        if check is None:
+            return
+        if check.ok:
+            self.add(ui.say(Say(check.message, kind="ok")))
+            self.react("task_clean")
+            return
+        self.add(ui.say(Say(check.message, kind="error")))
+        self.react("task_error", error=check.message[:50])
+        if check.suggestion:
+            model = check.suggestion
+
+            def switch() -> Say:
+                self.settings.set("model", model)
+                return Say(f"Модель: {model}", ["можна змінити будь-коли: /model <id>"], kind="ok")
+
+            self._handle(Confirm(f"Увімкнути модель {model}? (y/n)", switch))
 
     def _show_report(self, report: Report) -> None:
         self.add(ui.report(report))
