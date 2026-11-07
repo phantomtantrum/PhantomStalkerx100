@@ -37,11 +37,27 @@ def test_default_theme_is_monochrome_and_unknown_falls_back():
     set_current("mono")
 
 
-def test_logo_is_bloody_phantom_stalker():
-    assert len(wordmark.PHANTOM) == len(wordmark.STALKER) == len(wordmark.ONE_LINE) == 9
-    assert wordmark.width(wordmark.PHANTOM) <= 80 and wordmark.width(wordmark.STALKER) <= 80  # як на TAAG, w=80
-    assert set("".join(wordmark.ONE_LINE)) <= set("█▓▒░▄▀▐▌ ")
-    one = wordmark.render(200).plain.splitlines()
-    two = wordmark.render(100).plain.splitlines()
-    assert len(one) == 9 and len(two) == 19  # PHANTOM, порожній рядок, STALKER
+def test_logo_ansi_regular_layouts():
+    assert len(wordmark.PHANTOM) == len(wordmark.STALKER) == len(wordmark.ONE_LINE) == 5
+    assert set("".join(wordmark.ONE_LINE)) <= {"█", " "}
+    assert len(wordmark.render(200).plain.splitlines()) == 5      # в один рядок
+    assert len(wordmark.render(100).plain.splitlines()) == 11     # PHANTOM, порожній, STALKER
     assert wordmark.render(40).plain == "P H A N T O M  ·  S T A L K E R"
+
+
+def test_decrypt_animation_reveals_logo():
+    final = wordmark.render(100).plain
+    start = wordmark.render(100, progress=0.0, seed=42).plain
+    middle = wordmark.render(100, progress=0.5, seed=42).plain
+    assert wordmark.render(100, progress=1.0, seed=42).plain == final
+    assert start != final and len(start) == len(final)          # той самий розмір — нічого не «стрибає»
+    assert [i for i, c in enumerate(start) if c == " "] == [i for i, c in enumerate(final) if c == " "]
+    same = lambda a: sum(x == y for x, y in zip(a, final) if y != " ")
+    assert same(start) < same(middle) < same(final)             # літери поступово проступають
+    assert any(c in wordmark.NOISE and c != "█" for c in start)
+    assert wordmark.render(30, progress=0.0, seed=1).plain != wordmark.render(30).plain
+
+
+def test_reveal_order_is_stable_per_position():
+    assert wordmark.reveal_order(3, 2, 7) == wordmark.reveal_order(3, 2, 7)
+    assert wordmark.reveal_order(3, 2, 7) != wordmark.reveal_order(4, 2, 7)

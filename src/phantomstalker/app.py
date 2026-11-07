@@ -85,6 +85,7 @@ class PhantomStalkerApp(App):
         keyring_backend: KeyringBackend | None = None,
         copilot_factory: CopilotFactory = _default_copilot_factory,
         animate: bool = True,
+        logo_animation: bool | None = None,
     ) -> None:
         super().__init__(ansi_color=True)
         if isinstance(db, sqlite3.Connection):
@@ -100,6 +101,7 @@ class PhantomStalkerApp(App):
                                          last_report=lambda: self.last_report)
         self._copilot_factory = copilot_factory
         self._animate = animate
+        self._logo_animation = animate if logo_animation is None else logo_animation
 
         self.chat_history: list[dict[str, Any]] = []
         self.last_output = ""
@@ -160,7 +162,7 @@ class PhantomStalkerApp(App):
         return self.query_one("#suggest", ui.Suggestions)
 
     def _add_welcome(self) -> None:
-        self._welcome = ui.WelcomeEntry(self._db_label)
+        self._welcome = ui.WelcomeEntry(self._db_label, animate=self._logo_animation)
         self.query_one("#log", VerticalScroll).mount(self._welcome)
 
     def on_resize(self) -> None:
@@ -186,6 +188,8 @@ class PhantomStalkerApp(App):
 
     async def on_event(self, event: events.Event) -> None:
         if isinstance(event, (events.Key, events.MouseDown)):
+            if self._welcome is not None and self._welcome.is_mounted and not self._welcome.done:
+                self._welcome.skip_animation()
             was_sleeping = self.persona.mood == Mood.SLEEPING
             self.persona.poke()
             if was_sleeping:

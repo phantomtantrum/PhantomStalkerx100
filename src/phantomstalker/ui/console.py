@@ -24,9 +24,10 @@ from phantomstalker.core import wordmark
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
-def welcome(location: str, available_width: int = 120) -> RenderableType:
+def welcome(location: str, available_width: int = 120, progress: float = 1.0, seed: int = 0) -> RenderableType:
     theme = current()
-    logo = wordmark.render(available_width - 4, style=TEXT)  # мінус відступи
+    logo = wordmark.render(available_width - 4, style=TEXT, progress=progress, seed=seed,  # мінус відступи
+                           noise_style=MUTED, spark_style=f"bold {theme.accent}")
     info = Text()
     info.append(f"v{__version__}", style=MUTED)
     info.append("  ·  ", style=MUTED)
@@ -134,16 +135,44 @@ class Entry(Static):
 
 
 class WelcomeEntry(Entry):
-    """Шапка з логотипом PHANTOM STALKER; перебудовується під ширину вікна."""
+    """Шапка з логотипом PHANTOM STALKER: на старті «розшифровується», далі статична.
 
-    def __init__(self, location: str, **kwargs) -> None:
+    Перебудовується під ширину вікна (і під час анімації теж).
+    """
+
+    def __init__(self, location: str, animate: bool = True, **kwargs) -> None:
+        import random
+
         self.location = location
-        super().__init__(welcome(location), **kwargs)
+        self.animate = animate
+        self.seed = random.randrange(1 << 30)
+        self.frame = 0 if animate else wordmark.FRAMES
+        super().__init__(welcome(location, progress=self.progress, seed=self.seed), **kwargs)
+
+    @property
+    def progress(self) -> float:
+        return min(1.0, self.frame / wordmark.FRAMES)
+
+    @property
+    def done(self) -> bool:
+        return self.frame >= wordmark.FRAMES
+
+    def on_mount(self) -> None:
+        if not self.done:
+            self.set_interval(wordmark.FRAME_SECONDS, self._step, repeat=wordmark.FRAMES)
+
+    def _step(self) -> None:
+        self.frame += 1
+        self.refresh()
+
+    def skip_animation(self) -> None:
+        self.frame = wordmark.FRAMES
+        self.refresh()
 
     @property
     def body(self) -> RenderableType:
         width = self.app.size.width if self.is_attached else 120
-        return welcome(self.location, width)
+        return welcome(self.location, width, progress=self.progress, seed=self.seed)
 
     def render(self) -> RenderableType:
         return self.body

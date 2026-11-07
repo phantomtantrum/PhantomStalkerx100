@@ -10,6 +10,7 @@ from phantomstalker import __version__
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="phantomstalker", description="PhantomStalker — особистий термінал кібербезпеки з ШІ.")
     parser.add_argument("--db", help="шлях до бази SQLite (за замовчуванням ~/.phantomstalker/phantom.db)")
+    parser.add_argument("--no-animation", action="store_true", help="без анімації логотипа на старті")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = parser.parse_args(argv)
 
@@ -17,7 +18,7 @@ def main(argv: list[str] | None = None) -> None:
     from phantomstalker.services.settings import load_dotenv
 
     load_dotenv()
-    PhantomStalkerApp(db=args.db).run()
+    PhantomStalkerApp(db=args.db, logo_animation=not args.no_animation).run()
 
 
 if __name__ == "__main__":

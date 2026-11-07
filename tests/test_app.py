@@ -257,3 +257,28 @@ async def test_shell_style_prompt(conn, keyring_backend, tmp_path, monkeypatch):
         assert "sub]" in str(label.render())
         await submit(app, pilot, "/cd /definitely/missing")
         assert "Не можу перейти" in log_text(app)
+
+
+async def test_logo_decrypt_animation(conn, keyring_backend):
+    from phantomstalker.ui.console import WelcomeEntry
+
+    keyring_backend.set_password("phantomstalker", "anthropic_api_key", "sk")
+    app = PhantomStalkerApp(db=conn, keyring_backend=keyring_backend, animate=False, logo_animation=True)
+    async with app.run_test(size=SIZE) as pilot:
+        welcome = app.query_one(WelcomeEntry)
+        assert not welcome.done
+        await pilot.pause(2.2)  # ≈22 кадри по 70 мс
+        assert welcome.done and welcome.progress == 1.0
+        assert "██████  ██   ██" in log_text(app)
+
+
+async def test_logo_animation_skipped_by_keypress_or_flag(conn, keyring_backend):
+    from phantomstalker.ui.console import WelcomeEntry
+
+    app = PhantomStalkerApp(db=conn, keyring_backend=keyring_backend, animate=False, logo_animation=True)
+    async with app.run_test(size=SIZE) as pilot:
+        await pilot.press("a")
+        assert app.query_one(WelcomeEntry).done
+    app = make_app(conn, keyring_backend)  # animate=False → логотип одразу статичний
+    async with app.run_test(size=SIZE):
+        assert app.query_one(WelcomeEntry).done
